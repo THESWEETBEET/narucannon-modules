@@ -4,30 +4,13 @@
   "language": "javascript",
   "mode": "Normal",
   "baseUrl": "https://pixeldrain.net/d/CEG3sGRE",
-  "search": {
-    "method": "GET",
-    "headers": {},
-    "body": null,
-    "handler": "javascript",
-    "code": "const results = []; const items = ['1 - Land of Waves', '2 - Chūnin Exams', '3 - Search for Tsunade', '4 - Sasuke Retrieval Mission', '4.5 - Kakashi Chronicles', '5 - Kazekage Rescue Mission', '6 - Tenchi Bridge Mission', '7 - Akatsuki Suppression Mission', '8 - Itachi Pursuit Mission']; for (let i = 0; i < items.length; i++) { const title = items[i]; const match = title.match(/^(\\d+(?:\\.\\d+)?)\\s*-\\s*(.+)/); if (match) { const seasonNum = parseFloat(match[1]); results.push({ title: title, id: 'season_' + seasonNum, meta: { isSeason: true, seasonNumber: seasonNum, seasonName: match[2] } }); } } return results;"
-  },
-  "getServers": {
-    "method": "GET",
-    "headers": {},
-    "body": null,
-    "handler": "javascript",
-    "code": "return [{ name: 'PixelDrain', id: 'pixeldrain' }];"
-  },
+  "search": "const results = []; const items = ['1 - Land of Waves', '2 - Chūnin Exams', '3 - Search for Tsunade', '4 - Sasuke Retrieval Mission', '4.5 - Kakashi Chronicles', '5 - Kazekage Rescue Mission', '6 - Tenchi Bridge Mission', '7 - Akatsuki Suppression Mission', '8 - Itachi Pursuit Mission']; for (let i = 0; i < items.length; i++) { const title = items[i]; const match = title.match(/^(\\d+(?:\\.\\d+)?)\\s*-\\s*(.+)/); if (match) { const seasonNum = parseFloat(match[1]); results.push({ title: title, id: 'season_' + seasonNum, meta: { isSeason: true, seasonNumber: seasonNum, seasonName: match[2] } }); } } return results;",
+  "getServers": "return [{ name: 'PixelDrain', id: 'pixeldrain' }];",
   "extractors": [
     {
       "serverId": "pixeldrain",
-      "extractor": {
-        "method": "GET",
-        "headers": {},
-        "body": null,
-        "handler": "javascript",
-        "code": "const seasonId = window._sora_item_id; if (!seasonId) { return { error: 'No season ID provided' }; } const seasonNum = seasonId.replace('season_', ''); const baseUrl = 'https://pixeldrain.net/d/CEG3sGRE'; return [{ name: 'Season ' + seasonNum + ' Folder', url: baseUrl, quality: 'default' }];"
-      }
+      "extractor": "const seasonId = window._sora_item_id; if (!seasonId) { return { error: 'No season ID provided' }; } const seasonNum = seasonId.replace('season_', ''); const baseUrl = 'https://pixeldrain.net/d/CEG3sGRE'; return [{ name: 'Season ' + seasonNum + ' Folder', url: baseUrl, quality: 'default' }];"
     }
-  ]
+  ],
+  "catalog": "const results = []; const items = ['1 - Land of Waves', '2 - Chūnin Exams', '3 - Search for Tsunade', '4 - Sasuke Retrieval Mission', '4.5 - Kakashi Chronicles', '5 - Kazekage Rescue Mission', '6 - Tenchi Bridge Mission', '7 - Akatsuki Suppression Mission', '8 - Itachi Pursuit Mission']; for (let i = 0; i < items.length; i++) { const title = items[i]; const match = title.match(/^(\\d+(?:\\.\\d+)?)\\s*-\\s*(.+)/); if (match) { const seasonNum = parseFloat(match[1]); results.push({ title: title, id: 'season_' + seasonNum, meta: { isSeason: true, seasonNumber: seasonNum, seasonName: match[2] } }); } } return results;"
 }
