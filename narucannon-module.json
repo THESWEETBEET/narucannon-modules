@@ -1,0 +1,156 @@
+{
+  "name": "Narucannon",
+  "description": "Access the Narucannon Recut fanedit series from PixelDrain.",
+  "language": "javascript",
+  "mode": "Normal",
+  "baseUrl": "https://pixeldrain.net/d/CEG3sGRE",
+  "search": {
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "handler": "javascript"
+  },
+  "searchJavaScript": "
+    const axios = require('axios');
+    const cheerio = require('cheerio');
+
+    async function search() {
+        const url = 'https://pixeldrain.net/d/CEG3sGRE';
+        try {
+            const response = await axios.get(url);
+            const $ = cheerio.load(response.data);
+
+            // Find all elements that look like folder links (adjust selector as needed)
+            const results = [];
+            $('a.file-item__link, a[href*=\"/d/\"]').each((i, element) => {
+                const href = $(element).attr('href');
+                const title = $(element).text().trim() || $(element).find('.file-item__name').text().trim();
+
+                // Filter out the search index file
+                if (href && !href.includes('.search_index.gz') && title) {
+                    // Determine if it's a season folder or episode file based on the name
+                    const isSeason = /^\\d+\\s*-\\s*/.test(title) && !title.includes('.');
+                    const seasonMatch = title.match(/^(\\d+)\\s*-\\s*(.+)/);
+
+                    results.push({
+                        title: title,
+                        id: href,
+                        // Store metadata for later use
+                        meta: {
+                            isSeason: isSeason,
+                            seasonNumber: seasonMatch ? parseInt(seasonMatch[1], 10) : null,
+                            seasonName: seasonMatch ? seasonMatch[2] : title
+                        }
+                    });
+                }
+            });
+
+            return results;
+        } catch (error) {
+            console.error('Error fetching from PixelDrain:', error);
+            return [];
+        }
+    }
+
+    search();
+  ",
+  "getServers": {
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "handler": "javascript"
+  },
+  "getServersJavaScript": "
+    // This module doesn't have multiple servers, but we return a dummy server
+    return [{ name: 'PixelDrain', id: 'pixeldrain' }];
+  ",
+  "extractors": [
+    {
+      "serverId": "pixeldrain",
+      "extractor": {
+        "method": "GET",
+        "headers": {},
+        "body": null,
+        "handler": "javascript"
+      },
+      "extractorJavaScript": "
+        // For a given episode ID (which should be the PixelDrain file ID), construct the download URL.
+        // The ID comes from the search results.
+        const fileId = window._sora_item_id; // This is the 'id' from search results
+        if (!fileId) {
+            return { error: 'No file ID provided' };
+        }
+
+        // PixelDrain direct download URL format
+        const directUrl = `https://pixeldrain.com/api/file/${fileId}?download`;
+        return [{
+            name: 'Direct Download',
+            url: directUrl,
+            quality: 'default'
+        }];
+      "
+    }
+  ],
+  "catalog": {
+    "method": "GET",
+    "headers": {},
+    "body": null,
+    "handler": "javascript"
+  },
+  "catalogJavaScript": "
+    // This can be used to get a list of seasons/episodes for the catalog view.
+    // It reuses the search logic to present the structure.
+    const axios = require('axios');
+    const cheerio = require('cheerio');
+
+    async function catalog() {
+        const url = 'https://pixeldrain.net/d/CEG3sGRE';
+        try {
+            const response = await axios.get(url);
+            const $ = cheerio.load(response.data);
+
+            const seasons = {};
+            const episodes = {};
+
+            $('a.file-item__link, a[href*=\"/d/\"]').each((i, element) => {
+                const href = $(element).attr('href');
+                const title = $(element).text().trim() || $(element).find('.file-item__name').text().trim();
+
+                if (!href || href.includes('.search_index.gz') || !title) return;
+
+                const seasonMatch = title.match(/^(\\d+)\\s*-\\s*(.+)/);
+                const isSeason = /^\\d+\\s*-\\s*/.test(title) && !title.includes('.');
+
+                if (isSeason && seasonMatch) {
+                    const seasonNum = parseInt(seasonMatch[1], 10);
+                    seasons[seasonNum] = {
+                        id: href.replace('/d/', ''),
+                        name: seasonMatch[2],
+                        number: seasonNum
+                    };
+                } else if (!isSeason) {
+                    // This is likely an episode file - try to determine which season it belongs to
+                    // For simplicity, we'll add it as a standalone episode
+                    // In a real implementation, you'd need better logic to map episodes to seasons
+                    const episodeId = href.replace('/d/', '');
+                    episodes[episodeId] = {
+                        title: title,
+                        id: episodeId
+                    };
+                }
+            });
+
+            // Return a structured catalog
+            return {
+                seasons: Object.values(seasons),
+                episodes: episodes
+            };
+        } catch (error) {
+            console.error('Error fetching catalog:', error);
+            return { seasons: [], episodes: {} };
+        }
+    }
+
+    catalog();
+  "
+}
