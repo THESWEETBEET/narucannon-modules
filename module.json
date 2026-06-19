@@ -1,0 +1,19 @@
+{
+   "sourceName": "Naruto Fanfic (PixelDrain)",
+   "iconUrl": "https://pixeldrain.com/favicon.ico",
+   "author": {
+       "name": "You",
+       "icon": "https://pixeldrain.com/favicon.ico"
+   },
+   "version": "1.0.0",
+   "language": "English (DUB)",
+   "streamType": "MP4",
+   "quality": "1080p",
+   "baseUrl": "https://pixeldrain.com/",
+   "searchBaseUrl": "https://pixeldrain.com/api/filesystem/CEG3sGRE?stat&search=%s",
+   "scriptUrl": "https://raw.githubusercontent.com/yourusername/yourrepo/main/module.js",
+   "asyncJS": true,
+   "streamAsyncJS": false,
+   "softsub": false,
+   "type": "anime"
+}
