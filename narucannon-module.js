@@ -1,16 +1,29 @@
-{
-  "name": "Naruto Fanfic - Recut",
-  "description": "Access the Narucannon Recut fanedit series from PixelDrain.",
-  "language": "javascript",
-  "mode": "Normal",
-  "baseUrl": "https://pixeldrain.net/d/CEG3sGRE",
-  "search": "const results = []; const items = ['1 - Land of Waves', '2 - Chūnin Exams', '3 - Search for Tsunade', '4 - Sasuke Retrieval Mission', '4.5 - Kakashi Chronicles', '5 - Kazekage Rescue Mission', '6 - Tenchi Bridge Mission', '7 - Akatsuki Suppression Mission', '8 - Itachi Pursuit Mission']; for (let i = 0; i < items.length; i++) { const title = items[i]; const match = title.match(/^(\\d+(?:\\.\\d+)?)\\s*-\\s*(.+)/); if (match) { const seasonNum = parseFloat(match[1]); results.push({ title: title, id: 'season_' + seasonNum, meta: { isSeason: true, seasonNumber: seasonNum, seasonName: match[2] } }); } } return results;",
-  "getServers": "return [{ name: 'PixelDrain', id: 'pixeldrain' }];",
-  "extractors": [
-    {
-      "serverId": "pixeldrain",
-      "extractor": "const seasonId = window._sora_item_id; if (!seasonId) { return { error: 'No season ID provided' }; } const seasonNum = seasonId.replace('season_', ''); const baseUrl = 'https://pixeldrain.net/d/CEG3sGRE'; return [{ name: 'Season ' + seasonNum + ' Folder', url: baseUrl, quality: 'default' }];"
+// Paste this into a file named 'naruto_recut.js'
+
+function search(query) {
+    // This function should fetch the list of seasons from your PixelDrain folder
+    return [
+        { title: '1 - Land of Waves', id: 'season_1' },
+        // ... add all your seasons
+    ];
+}
+
+function details(item) {
+    // This function would fetch episodes for a season if needed
+    return item;
+}
+
+function getServers(item) {
+    return [{ name: 'PixelDrain', id: 'pixeldrain' }];
+}
+
+function extractor(serverId, item) {
+    if (serverId === 'pixeldrain') {
+        // Return the URL for the season folder
+        return {
+            url: `https://pixeldrain.net/d/CEG3sGRE`,
+            quality: 'default'
+        };
     }
-  ],
-  "catalog": "const results = []; const items = ['1 - Land of Waves', '2 - Chūnin Exams', '3 - Search for Tsunade', '4 - Sasuke Retrieval Mission', '4.5 - Kakashi Chronicles', '5 - Kazekage Rescue Mission', '6 - Tenchi Bridge Mission', '7 - Akatsuki Suppression Mission', '8 - Itachi Pursuit Mission']; for (let i = 0; i < items.length; i++) { const title = items[i]; const match = title.match(/^(\\d+(?:\\.\\d+)?)\\s*-\\s*(.+)/); if (match) { const seasonNum = parseFloat(match[1]); results.push({ title: title, id: 'season_' + seasonNum, meta: { isSeason: true, seasonNumber: seasonNum, seasonName: match[2] } }); } } return results;"
+    return null;
 }
