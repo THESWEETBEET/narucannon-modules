@@ -9,7 +9,7 @@
     "headers": {},
     "body": null,
     "handler": "javascript",
-    "code": "const axios = require('axios'); const cheerio = require('cheerio'); async function search() { const url = 'https://pixeldrain.net/d/CEG3sGRE'; try { const response = await axios.get(url); const $ = cheerio.load(response.data); const results = []; $('a.file-item__link, a[href*=\"/d/\"]').each((i, element) => { const href = $(element).attr('href'); const title = $(element).text().trim() || $(element).find('.file-item__name').text().trim(); if (href && !href.includes('.search_index.gz') && title) { const isSeason = /^\\d+\\s*-\\s*/.test(title) && !title.includes('.'); const seasonMatch = title.match(/^(\\d+)\\s*-\\s*(.+)/); results.push({ title: title, id: href, meta: { isSeason: isSeason, seasonNumber: seasonMatch ? parseInt(seasonMatch[1], 10) : null, seasonName: seasonMatch ? seasonMatch[2] : title } }); } }); return results; } catch (error) { console.error('Error fetching from PixelDrain:', error); return []; } } search();"
+    "code": "const results = []; const items = ['1 - Land of Waves', '2 - Chūnin Exams', '3 - Search for Tsunade', '4 - Sasuke Retrieval Mission', '4.5 - Kakashi Chronicles', '5 - Kazekage Rescue Mission', '6 - Tenchi Bridge Mission', '7 - Akatsuki Suppression Mission', '8 - Itachi Pursuit Mission']; for (let i = 0; i < items.length; i++) { const title = items[i]; const match = title.match(/^(\\d+(?:\\.\\d+)?)\\s*-\\s*(.+)/); if (match) { const seasonNum = parseFloat(match[1]); results.push({ title: title, id: 'season_' + seasonNum, meta: { isSeason: true, seasonNumber: seasonNum, seasonName: match[2] } }); } } return results;"
   },
   "getServers": {
     "method": "GET",
@@ -26,15 +26,8 @@
         "headers": {},
         "body": null,
         "handler": "javascript",
-        "code": "const fileId = window._sora_item_id; if (!fileId) { return { error: 'No file ID provided' }; } const directUrl = 'https://pixeldrain.com/api/file/' + fileId + '?download'; return [{ name: 'Direct Download', url: directUrl, quality: 'default' }];"
+        "code": "const seasonId = window._sora_item_id; if (!seasonId) { return { error: 'No season ID provided' }; } const seasonNum = seasonId.replace('season_', ''); const baseUrl = 'https://pixeldrain.net/d/CEG3sGRE'; return [{ name: 'Season ' + seasonNum + ' Folder', url: baseUrl, quality: 'default' }];"
       }
     }
-  ],
-  "catalog": {
-    "method": "GET",
-    "headers": {},
-    "body": null,
-    "handler": "javascript",
-    "code": "const axios = require('axios'); const cheerio = require('cheerio'); async function catalog() { const url = 'https://pixeldrain.net/d/CEG3sGRE'; try { const response = await axios.get(url); const $ = cheerio.load(response.data); const seasons = {}; const episodes = {}; $('a.file-item__link, a[href*=\"/d/\"]').each((i, element) => { const href = $(element).attr('href'); const title = $(element).text().trim() || $(element).find('.file-item__name').text().trim(); if (!href || href.includes('.search_index.gz') || !title) return; const seasonMatch = title.match(/^(\\d+)\\s*-\\s*(.+)/); const isSeason = /^\\d+\\s*-\\s*/.test(title) && !title.includes('.'); if (isSeason && seasonMatch) { const seasonNum = parseInt(seasonMatch[1], 10); seasons[seasonNum] = { id: href.replace('/d/', ''), name: seasonMatch[2], number: seasonNum }; } else if (!isSeason) { const episodeId = href.replace('/d/', ''); episodes[episodeId] = { title: title, id: episodeId }; } }); return { seasons: Object.values(seasons), episodes: episodes }; } catch (error) { console.error('Error fetching catalog:', error); return { seasons: [], episodes: {} }; } } catalog();"
-  }
+  ]
 }
