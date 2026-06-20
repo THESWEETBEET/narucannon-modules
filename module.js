@@ -167,20 +167,26 @@ async function extractEpisodes(url) {
             .filter(child => child.name !== ".search_index.gz")
             .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-        const episodes = episodeFiles
-            // PixelDrain only populates `id` for publicly shared files; if a
-            // file somehow has no id, skip it rather than produce a broken
-            // stream link.
-            .filter(file => !!file.id)
-            .map((file, index) => ({
-                // Use the flat PixelDrain file ID, NOT the path. The path
-                // contains spaces/unicode/brackets which triggered Sora's
-                // internal double-encoding bug between stream-resolution and
-                // player-opening. A bare ID has none of those characters, so
-                // there's nothing left for double-encoding to corrupt.
-                href: file.id,
-                number: index + 1
-            }));
+        // TEMP DIAGNOSTIC: log the raw shape of the first file node so we can
+        // see for certain whether `id` is actually present, instead of
+        // assuming. This directly tests the assumption from the last change.
+        if (episodeFiles.length > 0) {
+            console.log("First file node (raw):", JSON.stringify(episodeFiles[0]));
+        } else {
+            console.log("extractEpisodes: season folder had zero file-type children. Raw children:", JSON.stringify(seasonData.children));
+        }
+
+        const episodes = episodeFiles.map((file, index) => {
+            if (file.id) {
+                // Preferred: flat PixelDrain file ID, no special characters
+                // to be corrupted by Sora's double-encoding bug.
+                return { href: file.id, number: index + 1 };
+            }
+            // Fallback: no id available, use filename appended to the known
+            // season path. This is the previous behavior; kept so episodes
+            // still show up rather than silently disappearing.
+            return { href: `${url}/${file.name}`, number: index + 1 };
+        });
 
         if (episodes.length < episodeFiles.length) {
             console.log(`extractEpisodes: ${episodeFiles.length - episodes.length} file(s) skipped for missing id`);
@@ -196,18 +202,18 @@ async function extractEpisodes(url) {
 
 /**
  * extractStreamUrl(url)
- * Input: href returned from extractEpisodes (a flat PixelDrain file ID, e.g. "AbC123dE")
+ * Input: href returned from extractEpisodes -- EITHER a flat PixelDrain file
+ *        ID (e.g. "AbC123dE", preferred) OR a full filesystem path (fallback,
+ *        used only if the file node had no id available).
  * Output: direct stream URL (string)
- *
- * Uses PixelDrain's classic file-by-ID endpoint (same one the working "One
- * Pace" module uses) instead of the filesystem-by-path endpoint. The path
- * endpoint required encoding spaces/unicode/brackets, and Sora's own
- * pipeline was found to double-encode that string between stream-resolution
- * and actually opening the player, corrupting the URL. A flat ID has none
- * of those characters, so there's nothing for double-encoding to break.
  */
 async function extractStreamUrl(url) {
     try {
+        if (url.includes("/")) {
+            // Fallback shape: a full filesystem path.
+            return `https://pixeldrain.com/api/filesystem/${url}`;
+        }
+        // Preferred shape: a bare file ID.
         return `https://pixeldrain.com/api/file/${url}?download`;
     } catch (error) {
         console.log("extractStreamUrl error:", error);
