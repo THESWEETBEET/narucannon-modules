@@ -167,18 +167,23 @@ async function extractEpisodes(url) {
             .filter(child => child.name !== ".search_index.gz")
             .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-        if (episodeFiles.length === 0) {
+        if (episodeFiles.length > 0) {
+            console.log("extractEpisodes: sample file.path =", episodeFiles[0].path, "| file.name =", episodeFiles[0].name);
+        } else {
             console.log("extractEpisodes: season folder had zero file-type children. Raw children:", JSON.stringify(seasonData.children));
         }
 
-        // CONFIRMED via live testing: file.id is NOT populated for this
-        // folder's files (Sora's stream logs showed the fallback path-based
-        // URL being used, not a flat ID). So we always use the path-based
-        // approach now -- the id branch was a dead end for this folder.
-        const episodes = episodeFiles.map((file, index) => ({
-            href: `${url}/${file.name}`,
-            number: index + 1
-        }));
+        // Build each episode's href from file.path, but verify the
+        // assumption rather than blindly trust it: if file.path already
+        // contains the root folder ID, it's a full absolute path -- use it
+        // as-is. If not, it's relative to the season -- prefix it with the
+        // season's path (`url`). This avoids re-guessing wrong a third time.
+        const episodes = episodeFiles.map((file, index) => {
+            const rawPath = file.path.startsWith("/") ? file.path.slice(1) : file.path;
+            const isAbsolute = rawPath.startsWith(ROOT_FOLDER_ID);
+            const href = isAbsolute ? rawPath : `${url}/${file.name}`;
+            return { href, number: index + 1 };
+        });
 
         console.log(`extractEpisodes: ${episodes.length} episode(s) found for ${url}`);
         return JSON.stringify(episodes);
@@ -190,23 +195,16 @@ async function extractEpisodes(url) {
 
 /**
  * extractStreamUrl(url)
- * Input: href returned from extractEpisodes (a full filesystem path, e.g.
- *        "CEG3sGRE/2 - Chūnin Exams/[NaruCannon Recut] Chunin Exams 01 (Sub).mp4")
+ * Input: href returned from extractEpisodes (file.path from PixelDrain,
+ *        already a complete, correctly-encoded absolute path)
  * Output: direct stream URL (string)
  *
- * IMPORTANT: this fully percent-encodes the path ourselves, including
- * brackets/parentheses, per PixelDrain's own API docs ("Special characters
- * in path components need to be URL-encoded"). Debug logs showed Sora's
- * internal pipeline encoding the URL a second time downstream -- but only
- * partially: it correctly encoded brackets/parens that we'd left raw, while
- * ALSO double-encoding the %20/%C5%AB we'd already encoded. By encoding
- * EVERYTHING ourselves up front (leaving nothing raw), we're testing
- * whether Sora's downstream pass is idempotent on a fully-encoded string.
+ * No manual encoding here -- url is already in the correct, ready-to-use
+ * form straight from PixelDrain's API.
  */
 async function extractStreamUrl(url) {
     try {
-        const encodedPath = url.split("/").map(encodeURIComponent).join("/");
-        return `https://pixeldrain.com/api/filesystem/${encodedPath}`;
+        return `https://pixeldrain.com/api/filesystem/${url}`;
     } catch (error) {
         console.log("extractStreamUrl error:", error);
         return null;
