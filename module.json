@@ -11,7 +11,7 @@
    "quality": "1080p",
    "baseUrl": "https://pixeldrain.com/",
    "searchBaseUrl": "https://pixeldrain.com/api/filesystem/CEG3sGRE?stat&search=%s",
-   "scriptUrl": "https://github.com/THESWEETBEET/narucannon-modules/blob/main/module.js",
+   "scriptUrl": "https://raw.githubusercontent.com/THESWEETBEET/narucannon-modules/refs/heads/main/module.js",
    "asyncJS": true,
    "streamAsyncJS": false,
    "softsub": false,
