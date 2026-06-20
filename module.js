@@ -168,18 +168,16 @@ async function extractEpisodes(url) {
             .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
         const episodes = episodeFiles.map((file, index) => {
-            // file.path might be relative (e.g. "/Episode 1.mp4") or already
-            // a full path depending on what PixelDrain returns -- the season
-            // path bug taught us not to assume. Detect and handle both:
-            let fullPath;
-            if (file.path.startsWith(url) || file.path.startsWith("/" + url)) {
-                // Already absolute -- use as-is (strip leading slash if present).
-                fullPath = file.path.startsWith("/") ? file.path.slice(1) : file.path;
-            } else {
-                // Relative to the season -- prefix with the season's full path.
-                const relative = file.path.startsWith("/") ? file.path : `/${file.path}`;
-                fullPath = `${url}${relative}`;
-            }
+            // Don't try to detect relative vs absolute paths anymore -- that
+            // heuristic broke (produced a doubled path like ".../Chūnin
+            // Exams/CEG3sGRE/2 - Chūnin Exams/file.mp4"). Instead, take ONLY
+            // the filename (last path segment) from file.path/file.name, and
+            // append it to the season's path, which we already know is
+            // correct because it's literally the `url` this function was
+            // called with. This is unambiguous regardless of whether
+            // PixelDrain's file.path is relative or absolute.
+            const fileName = file.name; // e.g. "[NaruCannon Recut] Chunin Exams 12 (Sub).mp4"
+            const fullPath = `${url}/${fileName}`;
             return {
                 href: fullPath,
                 number: index + 1
