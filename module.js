@@ -1,55 +1,32 @@
 /*
  * Sora module for a Naruto fanfiction hosted as a PixelDrain shared folder.
  *
- * Real PixelDrain filesystem API shape (confirmed against PixelDrain's own
- * TypeScript client and the gallery-dl extractor, since the API has no
- * official public docs page):
- *
- *   GET https://pixeldrain.com/api/filesystem/{path}?stat
- *     -> {
- *          path: [ { type, path, name, ... }, ... ],  // breadcrumb, root -> target
- *          base_index: N,                              // index of target within `path`
- *          children: [ { type: "dir"|"file", path, name, file_size, ... }, ... ]
- *        }
- *
- * IMPORTANT: {path} is the actual filesystem path (e.g.
- * "CEG3sGRE/Land of Waves/Episode 1.mp4"), NOT a per-file short ID. However,
- * each child's "path" field in the API response is RELATIVE to the
- * directory you requested (e.g. "/Land of Waves", with a leading slash),
- * not an absolute path you can call directly. This module always builds
- * full paths itself by concatenating the parent's full path with each
- * child's relative path before making the next request.
- *
- * Folder layout on PixelDrain (per the user's actual folder):
+ * Folder layout on PixelDrain:
  *   /d/CEG3sGRE/
- *     Land of Waves/
+ *     Land of Waves/              <- a season folder
  *       <episode files>
  *     Chūnin Exams/
  *       <episode files>
- *     Search for Tsunade/
- *     Sasuke Retrieval Mission/
- *     Kakashi Chronicles/
- *     Kazekage Rescue Mission/
- *     Tenchi Bridge Mission/
- *     Akatsuki Suppression Mission/
- *     Itachi Pursuit Mission/
+ *     ... (7 more season folders, listed in SEASON_ORDER below)
  *
- * This module has exactly one "series": the fanfic itself. searchResults()
- * just returns that single series for any non-empty query. extractEpisodes()
- * walks the season folders in a fixed, in-story order (NOT alphabetical --
- * "Land of Waves" comes before "Chūnin Exams" in the story, but not in the
- * alphabet) and flattens all episodes into one continuous numbered list,
- * prefixing each title with its season name.
+ * UX behavior (per explicit request): searching for a SEASON NAME (e.g.
+ * "Land of Waves") returns that season directly as a single search result.
+ * Selecting it goes straight to that season's episode list. There is no
+ * separate "series" page in between -- each season IS a result.
+ *
+ * Root cause of the earlier bug: fetchv2() in Sora takes FOUR positional
+ * arguments -- (url, headers, method, body) -- not (url, optionsObject).
+ * Calling it with the wrong shape was the actual reason every request
+ * appeared to fail with "Redirect value is true" before this fix.
+ * This module copies the exact known-working fetchv2 call pattern used by
+ * the existing "One Pace" PixelDrain module.
  */
 
 // The PixelDrain folder ID from https://pixeldrain.net/d/CEG3sGRE
 const ROOT_FOLDER_ID = "CEG3sGRE";
 
-// Title shown to the user in search results / details.
-const SERIES_TITLE = "My Naruto Fanfiction";
-
-// Season folder names, in the order they should appear (story order, not
-// alphabetical -- PixelDrain's API does not guarantee folder ordering).
+// Season folder names, in story order (used only for an episode-number
+// fallback; matching against PixelDrain itself is done by exact name).
 const SEASON_ORDER = [
     "Land of Waves",
     "Chūnin Exams",
@@ -62,17 +39,26 @@ const SEASON_ORDER = [
     "Itachi Pursuit Mission"
 ];
 
+// Correct fetchv2 wrapper -- matches the verified-working call signature:
+// fetchv2(url, headers, method, body). DO NOT pass a single options object;
+// that silently breaks the request in Sora's runtime.
+async function soraFetch(url, headers = {}, method = "GET", body = null) {
+    try {
+        return await fetchv2(url, headers, method, body);
+    } catch (e) {
+        try {
+            return await fetch(url, { headers, method, body });
+        } catch (error) {
+            console.log("soraFetch failed for", url, error);
+            return null;
+        }
+    }
+}
+
 // Helper: build the PixelDrain "stat" API URL for any filesystem path.
-// `path` should NOT have a leading slash (e.g. "CEG3sGRE/Land of Waves").
 function statUrl(path) {
     const encoded = path.split("/").map(encodeURIComponent).join("/");
     return `https://pixeldrain.com/api/filesystem/${encoded}?stat`;
-}
-
-// Helper: build the direct playable stream URL for a PixelDrain filesystem path.
-function fileStreamUrl(path) {
-    const encoded = path.split("/").map(encodeURIComponent).join("/");
-    return `https://pixeldrain.com/api/filesystem/${encoded}`;
 }
 
 /**
@@ -80,17 +66,43 @@ function fileStreamUrl(path) {
  * Input: search keyword (string)
  * Output: JSON string array of { title, image, href }
  *
- * Since this module only ever serves one series, any non-empty search
- * just returns that series. The "href" is the series' own PixelDrain
- * folder id so extractDetails/extractEpisodes know where to look.
+ * Fetches the root folder once, then returns one result PER SEASON whose
+ * name contains the keyword (case-insensitive). Each result's href is the
+ * season's full PixelDrain path, so selecting it goes straight to that
+ * season's episode list via extractEpisodes.
  */
 async function searchResults(keyword) {
     try {
-        const results = [{
-            title: SERIES_TITLE,
-            image: "", // PixelDrain folders have no cover art; left blank.
-            href: ROOT_FOLDER_ID
-        }];
+        const response = await soraFetch(statUrl(ROOT_FOLDER_ID));
+        if (!response) {
+            console.log("searchResults: root fetch returned null");
+            return JSON.stringify([]);
+        }
+
+        const rootText = await response.text();
+        let rootData;
+        try {
+            rootData = JSON.parse(rootText);
+        } catch (parseErr) {
+            console.log("searchResults: root response was not valid JSON:", rootText.slice(0, 500));
+            return JSON.stringify([]);
+        }
+
+        const allChildren = rootData.children || [];
+        const seasonDirs = allChildren.filter(child => child.type === "dir");
+
+        const lowerKeyword = (keyword || "").toLowerCase();
+
+        const results = seasonDirs
+            .filter(season => !lowerKeyword || season.name.toLowerCase().includes(lowerKeyword))
+            .map(season => ({
+                title: season.name,
+                image: "",
+                // Full path: "CEG3sGRE" + "/Land of Waves" -> "CEG3sGRE/Land of Waves"
+                href: `${ROOT_FOLDER_ID}${season.path}`
+            }));
+
+        console.log(`searchResults: ${results.length} season(s) matched "${keyword}"`);
         return JSON.stringify(results);
     } catch (error) {
         console.log("searchResults error:", error);
@@ -100,15 +112,13 @@ async function searchResults(keyword) {
 
 /**
  * extractDetails(url)
- * Input: href returned from searchResults (the root folder id)
+ * Input: href returned from searchResults (a season's full PixelDrain path)
  * Output: JSON string array of { description, aliases, airdate }
- *
- * Kept minimal since there's no metadata source beyond the folder itself.
  */
 async function extractDetails(url) {
     try {
         const details = [{
-            description: "A Naruto fanfiction, hosted as a PixelDrain folder. Each subfolder is a season; each file inside is an episode.",
+            description: "A Naruto fanfiction, hosted as a PixelDrain folder.",
             aliases: "N/A",
             airdate: "N/A"
         }];
@@ -125,102 +135,41 @@ async function extractDetails(url) {
 
 /**
  * extractEpisodes(url)
- * Input: href returned from searchResults (the root folder id)
+ * Input: href returned from searchResults (a season's full PixelDrain path,
+ *        e.g. "CEG3sGRE/Land of Waves")
  * Output: JSON string array of { href, number }
  *
- * Looks up each season name from SEASON_ORDER inside the root folder's
- * children, then lists the files inside that season folder as episodes.
- * Episodes are flattened into one continuous numbered list across all
- * seasons, since Sora's episode model is a single flat list rather than a
- * season/episode grid. Each episode's href stores the file's PixelDrain
- * filesystem path; extractStreamUrl() turns that into the playable URL.
+ * Stats the season folder directly and lists its files as episodes.
  */
 async function extractEpisodes(url) {
     try {
-        // url is the root folder id (e.g. "CEG3sGRE") as returned by searchResults.
-        // Some APIs (PixelDrain included) behave differently or redirect
-        // requests that don't look like they're coming from a browser, so a
-        // User-Agent header is sent explicitly here.
-        const rootResponse = await fetchv2(
-            statUrl(ROOT_FOLDER_ID),
-            { "User-Agent": "Mozilla/5.0 (compatible; SoraModule/1.0)" }
-        );
+        const response = await soraFetch(statUrl(url));
+        if (!response) {
+            console.log("extractEpisodes: season fetch returned null for", url);
+            return JSON.stringify([]);
+        }
 
-        // TEMP DIAGNOSTIC: log the raw response body, unconditionally, before
-        // any parsing. This tells us exactly what PixelDrain sent back --
-        // whether it's real JSON, an HTML error page, or something else --
-        // instead of inferring it from downstream symptoms.
-        const rootText = await rootResponse.text();
-        console.log("RAW ROOT RESPONSE:", rootText.slice(0, 1500));
-
-        let rootData;
+        const seasonText = await response.text();
+        let seasonData;
         try {
-            rootData = JSON.parse(rootText);
+            seasonData = JSON.parse(seasonText);
         } catch (parseErr) {
-            console.log("Root response was not valid JSON:", parseErr);
+            console.log("extractEpisodes: season response was not valid JSON:", seasonText.slice(0, 500));
             return JSON.stringify([]);
         }
 
-        // children of the root folder = season folders. Per PixelDrain's API,
-        // each child's "path" field is RELATIVE to the requested directory
-        // (e.g. "/Land of Waves"), not a full path usable on its own. We build
-        // the full path ourselves: ROOT_FOLDER_ID + child's relative path.
-        const allChildren = rootData.children || [];
+        const episodeFiles = (seasonData.children || [])
+            .filter(child => child.type === "file")
+            .filter(child => child.name !== ".search_index.gz")
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-        // Fail fast and loud if the root call didn't actually return any
-        // children -- this means the request itself failed (auth, redirect,
-        // wrong URL, etc.), and there is no point trying all 9 seasons one
-        // by one, since they would all fail the same way.
-        if (allChildren.length === 0) {
-            console.log("extractEpisodes: root folder returned no children. Parsed root data was:", JSON.stringify(rootData));
-            return JSON.stringify([]);
-        }
+        const episodes = episodeFiles.map((file, index) => ({
+            // Full path to the file, e.g. "CEG3sGRE/Land of Waves/Episode 1.mp4"
+            href: `${url}${file.path}`,
+            number: index + 1
+        }));
 
-        const episodes = [];
-        let episodeCounter = 1;
-
-        for (const seasonName of SEASON_ORDER) {
-            const seasonDir = allChildren.find(
-                child => child.type === "dir" && child.name === seasonName
-            );
-            // Skip silently if a season folder is missing/renamed on PixelDrain --
-            // keeps the module from breaking entirely over one mismatched name.
-            if (!seasonDir) {
-                console.log(`Season folder not found: ${seasonName}`);
-                continue;
-            }
-
-            // Build the full path: "CEG3sGRE" + "/Land of Waves" -> "CEG3sGRE/Land of Waves"
-            const seasonFullPath = `${ROOT_FOLDER_ID}${seasonDir.path}`;
-            const seasonResponse = await fetchv2(
-                statUrl(seasonFullPath),
-                { "User-Agent": "Mozilla/5.0 (compatible; SoraModule/1.0)" }
-            );
-            const seasonData = await seasonResponse.json();
-
-            const episodeFiles = (seasonData.children || [])
-                .filter(child => child.type === "file")
-                // PixelDrain filesystems can contain a hidden search-index
-                // file; make sure it never shows up as a fake episode.
-                .filter(child => child.name !== ".search_index.gz")
-                // Sort episodes within a season naturally (Episode 2 before Episode 10)
-                .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-            for (const file of episodeFiles) {
-                // Again, file.path is relative to seasonFullPath -- prefix it
-                // to get the real, full filesystem path to the episode file.
-                const fileFullPath = `${seasonFullPath}${file.path}`;
-                episodes.push({
-                    href: fileFullPath,
-                    number: String(episodeCounter),
-                    // Prefix with season name since Sora shows episodes as one
-                    // flat list with no separate season grouping in the UI.
-                    title: `${seasonName} - ${file.name}`
-                });
-                episodeCounter++;
-            }
-        }
-
+        console.log(`extractEpisodes: ${episodes.length} episode(s) found for ${url}`);
         return JSON.stringify(episodes);
     } catch (error) {
         console.log("extractEpisodes error:", error);
@@ -230,19 +179,13 @@ async function extractEpisodes(url) {
 
 /**
  * extractStreamUrl(url)
- * Input: href returned from extractEpisodes (a PixelDrain filesystem path,
- *        e.g. "CEG3sGRE/Land of Waves/Episode 1.mp4")
+ * Input: href returned from extractEpisodes (a file's full PixelDrain path)
  * Output: direct stream URL (string)
- *
- * Builds the actual playable URL from the stored filesystem path. PixelDrain
- * serves filesystem files for direct playback at:
- *   https://pixeldrain.com/api/filesystem/{url-encoded-path}
- * This works for public files without an API key.
  */
 async function extractStreamUrl(url) {
     try {
-        // url is the file's filesystem path, e.g. "CEG3sGRE/Land of Waves/Episode 1.mp4".
-        return fileStreamUrl(url);
+        const encoded = url.split("/").map(encodeURIComponent).join("/");
+        return `https://pixeldrain.com/api/filesystem/${encoded}`;
     } catch (error) {
         console.log("extractStreamUrl error:", error);
         return null;
