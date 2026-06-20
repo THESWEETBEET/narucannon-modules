@@ -10,7 +10,7 @@
    "streamType": "MP4",
    "quality": "1080p",
    "baseUrl": "https://pixeldrain.com/",
-   "searchBaseUrl": "https://pixeldrain.com/api/filesystem/CEG3sGRE?stat&search=%s",
+   "searchBaseUrl": "https://pixeldrain.com/api/filesystem/CEG3sGRE?stat",
    "scriptUrl": "https://raw.githubusercontent.com/THESWEETBEET/narucannon-modules/refs/heads/main/module.js",
    "asyncJS": true,
    "streamAsyncJS": false,
