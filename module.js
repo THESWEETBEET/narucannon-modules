@@ -138,7 +138,13 @@ async function extractDetails(url) {
 async function extractEpisodes(url) {
     try {
         // url is the root folder id (e.g. "CEG3sGRE") as returned by searchResults.
-        const rootResponse = await fetchv2(statUrl(ROOT_FOLDER_ID));
+        // Some APIs (PixelDrain included) behave differently or redirect
+        // requests that don't look like they're coming from a browser, so a
+        // User-Agent header is sent explicitly here.
+        const rootResponse = await fetchv2(
+            statUrl(ROOT_FOLDER_ID),
+            { "User-Agent": "Mozilla/5.0 (compatible; SoraModule/1.0)" }
+        );
         const rootData = await rootResponse.json();
 
         // children of the root folder = season folders. Per PixelDrain's API,
@@ -146,6 +152,15 @@ async function extractEpisodes(url) {
         // (e.g. "/Land of Waves"), not a full path usable on its own. We build
         // the full path ourselves: ROOT_FOLDER_ID + child's relative path.
         const allChildren = rootData.children || [];
+
+        // Fail fast and loud if the root call didn't actually return any
+        // children -- this means the request itself failed (auth, redirect,
+        // wrong URL, etc.), and there is no point trying all 9 seasons one
+        // by one, since they would all fail the same way.
+        if (allChildren.length === 0) {
+            console.log("extractEpisodes: root folder returned no children. Root response was:", JSON.stringify(rootData));
+            return JSON.stringify([]);
+        }
 
         const episodes = [];
         let episodeCounter = 1;
@@ -163,7 +178,10 @@ async function extractEpisodes(url) {
 
             // Build the full path: "CEG3sGRE" + "/Land of Waves" -> "CEG3sGRE/Land of Waves"
             const seasonFullPath = `${ROOT_FOLDER_ID}${seasonDir.path}`;
-            const seasonResponse = await fetchv2(statUrl(seasonFullPath));
+            const seasonResponse = await fetchv2(
+                statUrl(seasonFullPath),
+                { "User-Agent": "Mozilla/5.0 (compatible; SoraModule/1.0)" }
+            );
             const seasonData = await seasonResponse.json();
 
             const episodeFiles = (seasonData.children || [])
