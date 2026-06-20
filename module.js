@@ -56,9 +56,11 @@ async function soraFetch(url, headers = {}, method = "GET", body = null) {
 }
 
 // Helper: build the PixelDrain "stat" API URL for any filesystem path.
+// IMPORTANT: do NOT manually encodeURIComponent here -- fetchv2 appears to
+// already encode the URL itself, so pre-encoding caused a double-encoding
+// bug (spaces became %2520 instead of %20). Pass the path through as-is.
 function statUrl(path) {
-    const encoded = path.split("/").map(encodeURIComponent).join("/");
-    return `https://pixeldrain.com/api/filesystem/${encoded}?stat`;
+    return `https://pixeldrain.com/api/filesystem/${path}?stat`;
 }
 
 /**
@@ -98,8 +100,10 @@ async function searchResults(keyword) {
             .map(season => ({
                 title: season.name,
                 image: "",
-                // Full path: "CEG3sGRE" + "/Land of Waves" -> "CEG3sGRE/Land of Waves"
-                href: `${ROOT_FOLDER_ID}${season.path}`
+                // season.path is already the FULL path (e.g. "CEG3sGRE/1 - Land of
+                // Waves"), confirmed from live debug logs -- do NOT prepend
+                // ROOT_FOLDER_ID again, that was the earlier double-prefix bug.
+                href: season.path.startsWith("/") ? season.path.slice(1) : season.path
             }));
 
         console.log(`searchResults: ${results.length} season(s) matched "${keyword}"`);
@@ -163,11 +167,24 @@ async function extractEpisodes(url) {
             .filter(child => child.name !== ".search_index.gz")
             .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-        const episodes = episodeFiles.map((file, index) => ({
-            // Full path to the file, e.g. "CEG3sGRE/Land of Waves/Episode 1.mp4"
-            href: `${url}${file.path}`,
-            number: index + 1
-        }));
+        const episodes = episodeFiles.map((file, index) => {
+            // file.path might be relative (e.g. "/Episode 1.mp4") or already
+            // a full path depending on what PixelDrain returns -- the season
+            // path bug taught us not to assume. Detect and handle both:
+            let fullPath;
+            if (file.path.startsWith(url) || file.path.startsWith("/" + url)) {
+                // Already absolute -- use as-is (strip leading slash if present).
+                fullPath = file.path.startsWith("/") ? file.path.slice(1) : file.path;
+            } else {
+                // Relative to the season -- prefix with the season's full path.
+                const relative = file.path.startsWith("/") ? file.path : `/${file.path}`;
+                fullPath = `${url}${relative}`;
+            }
+            return {
+                href: fullPath,
+                number: index + 1
+            };
+        });
 
         console.log(`extractEpisodes: ${episodes.length} episode(s) found for ${url}`);
         return JSON.stringify(episodes);
@@ -184,8 +201,8 @@ async function extractEpisodes(url) {
  */
 async function extractStreamUrl(url) {
     try {
-        const encoded = url.split("/").map(encodeURIComponent).join("/");
-        return `https://pixeldrain.com/api/filesystem/${encoded}`;
+        // No manual encoding here either -- see statUrl() comment above for why.
+        return `https://pixeldrain.com/api/filesystem/${url}`;
     } catch (error) {
         console.log("extractStreamUrl error:", error);
         return null;
