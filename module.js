@@ -145,7 +145,21 @@ async function extractEpisodes(url) {
             statUrl(ROOT_FOLDER_ID),
             { "User-Agent": "Mozilla/5.0 (compatible; SoraModule/1.0)" }
         );
-        const rootData = await rootResponse.json();
+
+        // TEMP DIAGNOSTIC: log the raw response body, unconditionally, before
+        // any parsing. This tells us exactly what PixelDrain sent back --
+        // whether it's real JSON, an HTML error page, or something else --
+        // instead of inferring it from downstream symptoms.
+        const rootText = await rootResponse.text();
+        console.log("RAW ROOT RESPONSE:", rootText.slice(0, 1500));
+
+        let rootData;
+        try {
+            rootData = JSON.parse(rootText);
+        } catch (parseErr) {
+            console.log("Root response was not valid JSON:", parseErr);
+            return JSON.stringify([]);
+        }
 
         // children of the root folder = season folders. Per PixelDrain's API,
         // each child's "path" field is RELATIVE to the requested directory
@@ -158,7 +172,7 @@ async function extractEpisodes(url) {
         // wrong URL, etc.), and there is no point trying all 9 seasons one
         // by one, since they would all fail the same way.
         if (allChildren.length === 0) {
-            console.log("extractEpisodes: root folder returned no children. Root response was:", JSON.stringify(rootData));
+            console.log("extractEpisodes: root folder returned no children. Parsed root data was:", JSON.stringify(rootData));
             return JSON.stringify([]);
         }
 
