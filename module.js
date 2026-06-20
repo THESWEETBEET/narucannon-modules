@@ -167,30 +167,18 @@ async function extractEpisodes(url) {
             .filter(child => child.name !== ".search_index.gz")
             .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-        // TEMP DIAGNOSTIC: log the raw shape of the first file node so we can
-        // see for certain whether `id` is actually present, instead of
-        // assuming. This directly tests the assumption from the last change.
-        if (episodeFiles.length > 0) {
-            console.log("First file node (raw):", JSON.stringify(episodeFiles[0]));
-        } else {
+        if (episodeFiles.length === 0) {
             console.log("extractEpisodes: season folder had zero file-type children. Raw children:", JSON.stringify(seasonData.children));
         }
 
-        const episodes = episodeFiles.map((file, index) => {
-            if (file.id) {
-                // Preferred: flat PixelDrain file ID, no special characters
-                // to be corrupted by Sora's double-encoding bug.
-                return { href: file.id, number: index + 1 };
-            }
-            // Fallback: no id available, use filename appended to the known
-            // season path. This is the previous behavior; kept so episodes
-            // still show up rather than silently disappearing.
-            return { href: `${url}/${file.name}`, number: index + 1 };
-        });
-
-        if (episodes.length < episodeFiles.length) {
-            console.log(`extractEpisodes: ${episodeFiles.length - episodes.length} file(s) skipped for missing id`);
-        }
+        // CONFIRMED via live testing: file.id is NOT populated for this
+        // folder's files (Sora's stream logs showed the fallback path-based
+        // URL being used, not a flat ID). So we always use the path-based
+        // approach now -- the id branch was a dead end for this folder.
+        const episodes = episodeFiles.map((file, index) => ({
+            href: `${url}/${file.name}`,
+            number: index + 1
+        }));
 
         console.log(`extractEpisodes: ${episodes.length} episode(s) found for ${url}`);
         return JSON.stringify(episodes);
@@ -202,19 +190,23 @@ async function extractEpisodes(url) {
 
 /**
  * extractStreamUrl(url)
- * Input: href returned from extractEpisodes -- EITHER a flat PixelDrain file
- *        ID (e.g. "AbC123dE", preferred) OR a full filesystem path (fallback,
- *        used only if the file node had no id available).
+ * Input: href returned from extractEpisodes (a full filesystem path, e.g.
+ *        "CEG3sGRE/2 - Chūnin Exams/[NaruCannon Recut] Chunin Exams 01 (Sub).mp4")
  * Output: direct stream URL (string)
+ *
+ * IMPORTANT: this fully percent-encodes the path ourselves, including
+ * brackets/parentheses, per PixelDrain's own API docs ("Special characters
+ * in path components need to be URL-encoded"). Debug logs showed Sora's
+ * internal pipeline encoding the URL a second time downstream -- but only
+ * partially: it correctly encoded brackets/parens that we'd left raw, while
+ * ALSO double-encoding the %20/%C5%AB we'd already encoded. By encoding
+ * EVERYTHING ourselves up front (leaving nothing raw), we're testing
+ * whether Sora's downstream pass is idempotent on a fully-encoded string.
  */
 async function extractStreamUrl(url) {
     try {
-        if (url.includes("/")) {
-            // Fallback shape: a full filesystem path.
-            return `https://pixeldrain.com/api/filesystem/${url}`;
-        }
-        // Preferred shape: a bare file ID.
-        return `https://pixeldrain.com/api/file/${url}?download`;
+        const encodedPath = url.split("/").map(encodeURIComponent).join("/");
+        return `https://pixeldrain.com/api/filesystem/${encodedPath}`;
     } catch (error) {
         console.log("extractStreamUrl error:", error);
         return null;
